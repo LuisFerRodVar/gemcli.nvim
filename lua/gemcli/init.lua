@@ -46,6 +46,7 @@ local function run_gemini_streamed(prompt)
 	vim.schedule(function()
 		vim.cmd("vnew")
 		buf = vim.api.nvim_get_current_buf()
+
 		vim.api.nvim_buf_set_name(buf, "gemini")
 
 		vim.bo[buf].buftype = "nofile"
@@ -53,10 +54,11 @@ local function run_gemini_streamed(prompt)
 		vim.bo[buf].swapfile = false
 		vim.bo[buf].modifiable = true
 		vim.bo[buf].filetype = "markdown"
-		vim.wo[buf].number = false
-		vim.wo[buf].relativenumber = false
-		vim.wo[buf].conceallevel = 2
-		vim.wo[buf].concealcursor = "n"
+
+		vim.wo.number = false
+		vim.wo.relativenumber = false
+		vim.wo.conceallevel = 2
+		vim.wo.concealcursor = "n"
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
 		vim.bo[buf].modifiable = false
