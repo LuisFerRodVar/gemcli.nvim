@@ -44,7 +44,7 @@ local function open_floating_buffer()
 		M.buf,
 		"n",
 		"q",
-		"<cmd>lua require'my_module'.hide()<CR>",
+		"<cmd>lua require'gemcli'.hide()<CR>",
 		{ noremap = true, silent = true }
 	)
 
