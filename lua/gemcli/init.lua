@@ -52,6 +52,11 @@ local function run_gemini_streamed(prompt)
 		vim.bo[buf].bufhidden = "wipe"
 		vim.bo[buf].swapfile = false
 		vim.bo[buf].modifiable = true
+		vim.bo[buf].filetype = "markdown"
+		vim.wo[buf].number = false
+		vim.wo[buf].relativenumber = false
+		vim.wo[buf].conceallevel = 2
+		vim.wo[buf].concealcursor = "n"
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
 		vim.bo[buf].modifiable = false
