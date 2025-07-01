@@ -1,4 +1,5 @@
 local M = {}
+local spinner_frames = { "󰑓", "󰑙", "󰑛", "󰑝", "󰑟", "󰑡", "󰑣" }
 
 M.buf = nil
 M.win = nil
@@ -66,9 +67,39 @@ local function run_gemini_streamed(prompt)
 	local stderr = vim.loop.new_pipe(false)
 	local shown = false
 
-	-- Notificar que se está generando
-	vim.notify("⌛ Generando respuesta con Gemini...", vim.log.levels.INFO)
+	-- Spinner animado
+	local notif_data = { spinner = 1, notif = nil }
+	local function update_spinner()
+		if not notif_data.timer then
+			return
+		end
+		notif_data.spinner = (notif_data.spinner % #spinner_frames) + 1
+		notif_data.notif = vim.notify(
+			spinner_frames[notif_data.spinner] .. " Generando respuesta con Gemini...",
+			vim.log.levels.INFO,
+			{ replace = notif_data.notif, title = "Gemini", timeout = false }
+		)
+	end
 
+	-- Inicia notificación animada
+	notif_data.notif = vim.notify("󰑓 Generando respuesta con Gemini...", vim.log.levels.INFO, {
+		title = "Gemini",
+		timeout = false,
+	})
+	notif_data.timer = vim.loop.new_timer()
+	notif_data.timer:start(100, 100, vim.schedule_wrap(update_spinner))
+
+	-- Función para detener la animación
+	local function stop_spinner()
+		if notif_data.timer then
+			notif_data.timer:stop()
+			notif_data.timer:close()
+			notif_data.timer = nil
+		end
+		vim.notify("✅ Respuesta generada.", vim.log.levels.INFO, { title = "Gemini" })
+	end
+
+	-- Resto del código...
 	local function write_to_buf(lines)
 		if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
 			return
@@ -84,16 +115,15 @@ local function run_gemini_streamed(prompt)
 	end
 
 	local function append_to_buf(data)
-		if not data then
-			return
-		end
 		vim.schedule(function()
-			-- Abrir buffer solo una vez, cuando llega el primer chunk
 			if not shown then
 				open_floating_buffer()
-				vim.api.nvim_buf_set_lines(M.buf, 0, -1, false, {}) -- Limpiar líneas
+				vim.api.nvim_buf_set_lines(M.buf, 0, -1, false, {})
 				vim.bo[M.buf].modifiable = false
 				shown = true
+			end
+			if not data or data == "" then
+				return
 			end
 
 			local lines = {}
@@ -111,6 +141,7 @@ local function run_gemini_streamed(prompt)
 		stdout:close()
 		stderr:close()
 		vim.schedule(function()
+			stop_spinner()
 			if shown and vim.api.nvim_buf_is_valid(M.buf) then
 				local current = vim.api.nvim_buf_get_lines(M.buf, 0, -1, false)
 				if #current == 0 then
@@ -125,6 +156,7 @@ local function run_gemini_streamed(prompt)
 	stdout:read_start(function(err, data)
 		if err then
 			vim.schedule(function()
+				stop_spinner()
 				vim.api.nvim_err_writeln("Error leyendo Gemini: " .. err)
 			end)
 			return
