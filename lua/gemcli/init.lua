@@ -1,14 +1,54 @@
 local M = {}
 
+-- Función para crear buffer flotante scratch
+local function open_floating_buffer()
+	local buf = vim.api.nvim_create_buf(false, true) -- no listado, scratch
+
+	local width = math.floor(vim.o.columns * 0.7)
+	local height = math.floor(vim.o.lines * 0.5)
+	local row = math.floor((vim.o.lines - height) / 2)
+	local col = math.floor((vim.o.columns - width) / 2)
+
+	local opts = {
+		style = "minimal",
+		relative = "editor",
+		width = width,
+		height = height,
+		row = row,
+		col = col,
+		border = "rounded",
+	}
+
+	local win = vim.api.nvim_open_win(buf, true, opts)
+
+	-- Configuración del buffer
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].swapfile = false
+	vim.bo[buf].modifiable = true
+	vim.bo[buf].filetype = "markdown"
+
+	-- Configuración de la ventana
+	vim.wo[win].number = false
+	vim.wo[win].relativenumber = false
+	vim.wo[win].conceallevel = 2
+	vim.wo[win].concealcursor = "n"
+
+	-- Mapeo para cerrar la ventana con 'q'
+	vim.api.nvim_buf_set_keymap(buf, "n", "q", "<cmd>close<CR>", { noremap = true, silent = true })
+
+	return buf, win
+end
+
 local function run_gemini_streamed(prompt)
-	local buf = nil
+	local buf, win = open_floating_buffer()
 	local stdout = vim.loop.new_pipe(false)
 	local stderr = vim.loop.new_pipe(false)
 
 	local pending_chunks = {}
-	local buf_ready = false
+	local buf_ready = true -- buffer ya está listo
 
-	--- Escribir líneas en el buffer (desbloqueando temporalmente)
+	-- Escribir líneas en el buffer (desbloqueando temporalmente)
 	local function write_to_buf(lines)
 		if not buf or not vim.api.nvim_buf_is_valid(buf) then
 			return
@@ -23,55 +63,25 @@ local function run_gemini_streamed(prompt)
 		end
 	end
 
-	--- Procesar chunk recibido
+	-- Procesar chunk recibido
 	local function append_to_buf(data)
 		if not data then
 			return
 		end
 		vim.schedule(function()
 			local lines = {}
-			for line in data:gmatch("[^\r\n]+") do
+			-- Separar líneas con patrón robusto
+			for line in data:gmatch("([^\n]*)\n?") do
 				table.insert(lines, line)
 			end
-
-			if not buf_ready then
-				vim.list_extend(pending_chunks, lines)
-			else
-				write_to_buf(lines)
-			end
+			write_to_buf(lines)
 		end)
 	end
 
-	--- Crear buffer y split
-	vim.schedule(function()
-		vim.cmd("vnew")
-		buf = vim.api.nvim_get_current_buf()
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
+	vim.bo[buf].modifiable = false
 
-		vim.api.nvim_buf_set_name(buf, "[Scratch Gemini]")
-		vim.bo[buf].buftype = "nofile"
-		vim.bo[buf].bufhidden = "wipe"
-		vim.bo[buf].swapfile = false
-		vim.bo[buf].modifiable = true
-		vim.bo[buf].filetype = "markdown"
-
-		vim.wo.number = false
-		vim.wo.relativenumber = false
-		vim.wo.conceallevel = 2
-		vim.wo.concealcursor = "n"
-
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
-		vim.bo[buf].modifiable = false
-
-		buf_ready = true
-
-		-- Escribir lo que se acumuló antes
-		if #pending_chunks > 0 then
-			write_to_buf(pending_chunks)
-			pending_chunks = {}
-		end
-	end)
-
-	--- Iniciar proceso Gemini
+	-- Iniciar proceso Gemini
 	local handle = vim.loop.spawn("gemini", {
 		args = { "-p", prompt },
 		stdio = { nil, stdout, stderr },
@@ -90,7 +100,7 @@ local function run_gemini_streamed(prompt)
 		end)
 	end)
 
-	--- Leer salida en tiempo real
+	-- Leer salida en tiempo real
 	stdout:read_start(function(err, data)
 		if err then
 			vim.schedule(function()
@@ -102,7 +112,7 @@ local function run_gemini_streamed(prompt)
 	end)
 end
 
---- Prompt manual
+-- Prompt manual
 function M.ask_prompt_streamed()
 	vim.ui.input({ prompt = "Pregunta a Gemini: " }, function(input)
 		if input and input ~= "" then
@@ -111,7 +121,7 @@ function M.ask_prompt_streamed()
 	end)
 end
 
---- Prompt desde selección visual
+-- Prompt desde selección visual
 function M.ask_visual_streamed()
 	local _, ls, cs = unpack(vim.fn.getpos("'<"))
 	local _, le, ce = unpack(vim.fn.getpos("'>"))
