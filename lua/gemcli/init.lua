@@ -96,7 +96,12 @@ local function run_gemini_streamed(prompt)
 			notif_data.timer:close()
 			notif_data.timer = nil
 		end
-		vim.notify("✅ Respuesta generada.", vim.log.levels.INFO, { title = "Gemini" })
+
+		-- Reemplaza manualmente con una notificación nueva
+		vim.notify("✅ Respuesta generada.", vim.log.levels.INFO, {
+			title = "Gemini",
+			timeout = 3000, -- esta sí desaparecerá
+		})
 	end
 
 	-- Resto del código...
