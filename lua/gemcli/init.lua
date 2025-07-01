@@ -12,10 +12,17 @@ local function read_all(handle, callback)
 	end)
 end
 
---- Ejecuta Gemini CLI de forma asíncrona
-local function run_gemini(prompt, callback)
+local notify_id
+
+function run_gemini(prompt, callback)
 	local stdout = vim.loop.new_pipe(false)
 	local stderr = vim.loop.new_pipe(false)
+
+	notify_id = vim.notify("Gemini está generando...", vim.log.levels.INFO, {
+		title = "nvim-gemini",
+		timeout = false,
+		hide_from_history = false,
+	})
 
 	local handle
 	handle = vim.loop.spawn("gemini", {
@@ -28,6 +35,10 @@ local function run_gemini(prompt, callback)
 	end)
 
 	read_all(stdout, function(output)
+		vim.notify("Respuesta generada", vim.log.levels.INFO, {
+			replace = notify_id,
+			title = "nvim-gemini",
+		})
 		callback(output)
 	end)
 end
@@ -62,7 +73,12 @@ end
 function M.show_output(output)
 	vim.schedule(function()
 		vim.cmd("vnew")
-		vim.api.nvim_buf_set_lines(0, 0, -1, false, vim.split(output or "", "\n"))
+		local buf = vim.api.nvim_get_current_buf()
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(output or "", "\n"))
+
+		vim.bo[buf].buftype = "nofile"
+		vim.bo[buf].bufhidden = "wipe"
+		vim.bo[buf].swapfile = false
 	end)
 end
 
