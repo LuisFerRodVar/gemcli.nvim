@@ -3,10 +3,10 @@ local M = {}
 M.buf = nil
 M.win = nil
 
--- Función para crear buffer flotante scratch
+-- Crear y mostrar el buffer flotante
 local function open_floating_buffer()
 	if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
-		M.buf = vim.api.nvim_create_buf(false, true) -- no listado, scratch
+		M.buf = vim.api.nvim_create_buf(false, true)
 	end
 
 	local width = math.floor(vim.o.columns * 0.7)
@@ -26,20 +26,17 @@ local function open_floating_buffer()
 
 	M.win = vim.api.nvim_open_win(M.buf, true, opts)
 
-	-- Configuración del buffer
 	vim.bo[M.buf].buftype = "nofile"
-	vim.bo[M.buf].bufhidden = "hide" -- <== importante para no borrar el buffer
+	vim.bo[M.buf].bufhidden = "hide"
 	vim.bo[M.buf].swapfile = false
 	vim.bo[M.buf].modifiable = true
 	vim.bo[M.buf].filetype = "markdown"
 
-	-- Configuración de la ventana
 	vim.wo[M.win].number = false
 	vim.wo[M.win].relativenumber = false
 	vim.wo[M.win].conceallevel = 2
 	vim.wo[M.win].concealcursor = "n"
 
-	-- Mapeo para cerrar la ventana con 'q'
 	vim.api.nvim_buf_set_keymap(
 		M.buf,
 		"n",
@@ -65,18 +62,21 @@ function M.show()
 end
 
 local function run_gemini_streamed(prompt)
-	local buf, win = open_floating_buffer()
 	local stdout = vim.loop.new_pipe(false)
 	local stderr = vim.loop.new_pipe(false)
+	local shown = false
+
+	-- Notificar que se está generando
+	vim.notify("⌛ Generando respuesta con Gemini...", vim.log.levels.INFO)
 
 	local function write_to_buf(lines)
-		if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
 			return
 		end
 		local ok = pcall(function()
-			vim.bo[buf].modifiable = true
-			vim.api.nvim_buf_set_lines(buf, -1, -1, false, lines)
-			vim.bo[buf].modifiable = false
+			vim.bo[M.buf].modifiable = true
+			vim.api.nvim_buf_set_lines(M.buf, -1, -1, false, lines)
+			vim.bo[M.buf].modifiable = false
 		end)
 		if not ok then
 			vim.notify("Error escribiendo en el buffer de Gemini", vim.log.levels.WARN)
@@ -88,6 +88,14 @@ local function run_gemini_streamed(prompt)
 			return
 		end
 		vim.schedule(function()
+			-- Abrir buffer solo una vez, cuando llega el primer chunk
+			if not shown then
+				open_floating_buffer()
+				vim.api.nvim_buf_set_lines(M.buf, 0, -1, false, {}) -- Limpiar líneas
+				vim.bo[M.buf].modifiable = false
+				shown = true
+			end
+
 			local lines = {}
 			for line in data:gmatch("([^\n]*)\n?") do
 				table.insert(lines, line)
@@ -96,9 +104,6 @@ local function run_gemini_streamed(prompt)
 		end)
 	end
 
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
-	vim.bo[buf].modifiable = false
-
 	local handle = vim.loop.spawn("gemini", {
 		args = { "-p", prompt },
 		stdio = { nil, stdout, stderr },
@@ -106,12 +111,12 @@ local function run_gemini_streamed(prompt)
 		stdout:close()
 		stderr:close()
 		vim.schedule(function()
-			if vim.api.nvim_buf_is_valid(buf) then
-				local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-				if #current == 1 and current[1]:find("Generando") then
-					vim.bo[buf].modifiable = true
-					vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "❌ No se recibió salida de Gemini." })
-					vim.bo[buf].modifiable = false
+			if shown and vim.api.nvim_buf_is_valid(M.buf) then
+				local current = vim.api.nvim_buf_get_lines(M.buf, 0, -1, false)
+				if #current == 0 then
+					vim.bo[M.buf].modifiable = true
+					vim.api.nvim_buf_set_lines(M.buf, 0, -1, false, { "❌ No se recibió salida de Gemini." })
+					vim.bo[M.buf].modifiable = false
 				end
 			end
 		end)
