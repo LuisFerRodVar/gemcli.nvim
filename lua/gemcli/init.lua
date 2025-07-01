@@ -67,19 +67,7 @@ local function run_gemini_streamed(prompt)
 	local stderr = vim.loop.new_pipe(false)
 	local shown = false
 
-	-- Notificación de inicio
-	local notif = vim.notify("󰑓 Generando respuesta con Gemini...", vim.log.levels.INFO, {
-		title = "Gemini",
-		timeout = false,
-	})
-
-	local function stop_notification()
-		vim.notify("✅ Respuesta generada.", vim.log.levels.INFO, {
-			title = "Gemini",
-			replace = notif,
-			timeout = 3000,
-		})
-	end
+	vim.notify("⌛ Generando respuesta con Gemini...", vim.log.levels.INFO)
 
 	local function write_to_buf(lines)
 		if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
@@ -97,12 +85,14 @@ local function run_gemini_streamed(prompt)
 
 	local function append_to_buf(data)
 		vim.schedule(function()
+			-- Abrir buffer al primer intento, sin importar si el contenido está vacío
 			if not shown then
 				open_floating_buffer()
 				vim.api.nvim_buf_set_lines(M.buf, 0, -1, false, {})
 				vim.bo[M.buf].modifiable = false
 				shown = true
 			end
+
 			if not data or data == "" then
 				return
 			end
@@ -122,7 +112,6 @@ local function run_gemini_streamed(prompt)
 		stdout:close()
 		stderr:close()
 		vim.schedule(function()
-			stop_notification()
 			if shown and vim.api.nvim_buf_is_valid(M.buf) then
 				local current = vim.api.nvim_buf_get_lines(M.buf, 0, -1, false)
 				if #current == 0 then
@@ -137,7 +126,6 @@ local function run_gemini_streamed(prompt)
 	stdout:read_start(function(err, data)
 		if err then
 			vim.schedule(function()
-				stop_notification()
 				vim.api.nvim_err_writeln("Error leyendo Gemini: " .. err)
 			end)
 			return
