@@ -1,6 +1,5 @@
 local M = {}
 
---- Ejecuta Gemini CLI en modo stream y escribe la respuesta en tiempo real
 local function run_gemini_streamed(prompt)
 	local buf = nil
 	local stdout = vim.loop.new_pipe(false)
@@ -10,16 +9,19 @@ local function run_gemini_streamed(prompt)
 		vim.cmd("vnew")
 		buf = vim.api.nvim_get_current_buf()
 
-		-- Establecer nombre visible en la ventana
+		-- Asignar nombre
 		vim.api.nvim_buf_set_name(buf, "gemini")
 
-		-- Configurar como buffer temporal, no modificable
+		-- Configurar buffer temporal
 		vim.bo[buf].buftype = "nofile"
 		vim.bo[buf].bufhidden = "wipe"
 		vim.bo[buf].swapfile = false
-		vim.bo[buf].modifiable = false
+		vim.bo[buf].modifiable = true
 
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
+
+		-- Bloquear después de mensaje inicial
+		vim.bo[buf].modifiable = false
 	end)
 
 	local output = {}
@@ -29,10 +31,9 @@ local function run_gemini_streamed(prompt)
 			return
 		end
 		vim.schedule(function()
-			-- Hacer temporalmente modificable para escribir
+			-- Desbloquear, escribir y volver a bloquear
 			vim.bo[buf].modifiable = true
 
-			-- Limpiar mensaje inicial si es necesario
 			local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 			if #current == 1 and current[1]:find("Generando") then
 				vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
@@ -43,13 +44,11 @@ local function run_gemini_streamed(prompt)
 				vim.api.nvim_buf_set_lines(buf, -1, -1, false, { line })
 			end
 
-			-- Volver a bloquear edición
 			vim.bo[buf].modifiable = false
 		end)
 	end
 
-	local handle
-	handle = vim.loop.spawn("gemini", {
+	local handle = vim.loop.spawn("gemini", {
 		args = { "-p", prompt },
 		stdio = { nil, stdout, stderr },
 	}, function()
@@ -58,7 +57,7 @@ local function run_gemini_streamed(prompt)
 		handle:close()
 
 		vim.schedule(function()
-			if #output == 0 then
+			if #output == 0 and buf then
 				vim.bo[buf].modifiable = true
 				vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "❌ No se recibió salida de Gemini." })
 				vim.bo[buf].modifiable = false
