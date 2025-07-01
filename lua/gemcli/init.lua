@@ -72,8 +72,6 @@ local function run_gemini_streamed(prompt)
 	}, function()
 		stdout:close()
 		stderr:close()
-		handle:close()
-
 		vim.schedule(function()
 			if buf_ready and vim.api.nvim_buf_is_valid(buf) then
 				local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
