@@ -1,8 +1,13 @@
 local M = {}
 
+M.buf = nil
+M.win = nil
+
 -- Función para crear buffer flotante scratch
 local function open_floating_buffer()
-	local buf = vim.api.nvim_create_buf(false, true) -- no listado, scratch
+	if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
+		M.buf = vim.api.nvim_create_buf(false, true) -- no listado, scratch
+	end
 
 	local width = math.floor(vim.o.columns * 0.7)
 	local height = math.floor(vim.o.lines * 0.5)
@@ -19,25 +24,44 @@ local function open_floating_buffer()
 		border = "rounded",
 	}
 
-	local win = vim.api.nvim_open_win(buf, true, opts)
+	M.win = vim.api.nvim_open_win(M.buf, true, opts)
 
 	-- Configuración del buffer
-	vim.bo[buf].buftype = "nofile"
-	vim.bo[buf].bufhidden = "wipe"
-	vim.bo[buf].swapfile = false
-	vim.bo[buf].modifiable = true
-	vim.bo[buf].filetype = "markdown"
+	vim.bo[M.buf].buftype = "nofile"
+	vim.bo[M.buf].bufhidden = "hide" -- <== importante para no borrar el buffer
+	vim.bo[M.buf].swapfile = false
+	vim.bo[M.buf].modifiable = true
+	vim.bo[M.buf].filetype = "markdown"
 
 	-- Configuración de la ventana
-	vim.wo[win].number = false
-	vim.wo[win].relativenumber = false
-	vim.wo[win].conceallevel = 2
-	vim.wo[win].concealcursor = "n"
+	vim.wo[M.win].number = false
+	vim.wo[M.win].relativenumber = false
+	vim.wo[M.win].conceallevel = 2
+	vim.wo[M.win].concealcursor = "n"
 
 	-- Mapeo para cerrar la ventana con 'q'
-	vim.api.nvim_buf_set_keymap(buf, "n", "q", "<cmd>close<CR>", { noremap = true, silent = true })
+	vim.api.nvim_buf_set_keymap(
+		M.buf,
+		"n",
+		"q",
+		"<cmd>lua require'my_module'.hide()<CR>",
+		{ noremap = true, silent = true }
+	)
 
-	return buf, win
+	return M.buf, M.win
+end
+
+function M.hide()
+	if M.win and vim.api.nvim_win_is_valid(M.win) then
+		vim.api.nvim_win_close(M.win, true)
+		M.win = nil
+	end
+end
+
+function M.show()
+	if M.buf and vim.api.nvim_buf_is_valid(M.buf) then
+		open_floating_buffer()
+	end
 end
 
 local function run_gemini_streamed(prompt)
@@ -45,10 +69,6 @@ local function run_gemini_streamed(prompt)
 	local stdout = vim.loop.new_pipe(false)
 	local stderr = vim.loop.new_pipe(false)
 
-	local pending_chunks = {}
-	local buf_ready = true -- buffer ya está listo
-
-	-- Escribir líneas en el buffer (desbloqueando temporalmente)
 	local function write_to_buf(lines)
 		if not buf or not vim.api.nvim_buf_is_valid(buf) then
 			return
@@ -63,14 +83,12 @@ local function run_gemini_streamed(prompt)
 		end
 	end
 
-	-- Procesar chunk recibido
 	local function append_to_buf(data)
 		if not data then
 			return
 		end
 		vim.schedule(function()
 			local lines = {}
-			-- Separar líneas con patrón robusto
 			for line in data:gmatch("([^\n]*)\n?") do
 				table.insert(lines, line)
 			end
@@ -81,7 +99,6 @@ local function run_gemini_streamed(prompt)
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
 	vim.bo[buf].modifiable = false
 
-	-- Iniciar proceso Gemini
 	local handle = vim.loop.spawn("gemini", {
 		args = { "-p", prompt },
 		stdio = { nil, stdout, stderr },
@@ -89,7 +106,7 @@ local function run_gemini_streamed(prompt)
 		stdout:close()
 		stderr:close()
 		vim.schedule(function()
-			if buf_ready and vim.api.nvim_buf_is_valid(buf) then
+			if vim.api.nvim_buf_is_valid(buf) then
 				local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 				if #current == 1 and current[1]:find("Generando") then
 					vim.bo[buf].modifiable = true
@@ -100,7 +117,6 @@ local function run_gemini_streamed(prompt)
 		end)
 	end)
 
-	-- Leer salida en tiempo real
 	stdout:read_start(function(err, data)
 		if err then
 			vim.schedule(function()
@@ -112,7 +128,6 @@ local function run_gemini_streamed(prompt)
 	end)
 end
 
--- Prompt manual
 function M.ask_prompt_streamed()
 	vim.ui.input({ prompt = "Pregunta a Gemini: " }, function(input)
 		if input and input ~= "" then
@@ -121,7 +136,6 @@ function M.ask_prompt_streamed()
 	end)
 end
 
--- Prompt desde selección visual
 function M.ask_visual_streamed()
 	local _, ls, cs = unpack(vim.fn.getpos("'<"))
 	local _, le, ce = unpack(vim.fn.getpos("'>"))
@@ -129,7 +143,6 @@ function M.ask_visual_streamed()
 	if #lines == 0 then
 		return
 	end
-
 	lines[#lines] = string.sub(lines[#lines], 1, ce)
 	lines[1] = string.sub(lines[1], cs)
 	local prompt = table.concat(lines, "\n")
