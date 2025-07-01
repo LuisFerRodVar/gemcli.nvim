@@ -47,8 +47,7 @@ local function run_gemini_streamed(prompt)
 		vim.cmd("vnew")
 		buf = vim.api.nvim_get_current_buf()
 
-		vim.api.nvim_buf_set_name(buf, "gemini")
-
+		vim.api.nvim_buf_set_name(buf, "[Scratch Gemini]")
 		vim.bo[buf].buftype = "nofile"
 		vim.bo[buf].bufhidden = "wipe"
 		vim.bo[buf].swapfile = false
