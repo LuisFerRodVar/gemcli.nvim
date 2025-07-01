@@ -1,28 +1,41 @@
 local M = {}
 
-local function read_all(handle, callback)
-	local output = ""
-	handle:read_start(function(err, data)
-		assert(not err, err)
-		if data then
-			output = output .. data
-		else
-			callback(output)
-		end
-	end)
-end
-
-local notify_id
-
-function run_gemini(prompt, callback)
+--- Ejecuta Gemini CLI en modo stream y escribe la respuesta en tiempo real
+local function run_gemini_streamed(prompt)
+	local buf = nil
 	local stdout = vim.loop.new_pipe(false)
 	local stderr = vim.loop.new_pipe(false)
 
-	notify_id = vim.notify("Gemini está generando...", vim.log.levels.INFO, {
-		title = "nvim-gemini",
-		timeout = false,
-		hide_from_history = false,
-	})
+	-- Crear split y buffer temporal
+	vim.schedule(function()
+		vim.cmd("vnew")
+		buf = vim.api.nvim_get_current_buf()
+
+		vim.bo[buf].buftype = "nofile"
+		vim.bo[buf].bufhidden = "wipe"
+		vim.bo[buf].swapfile = false
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
+	end)
+
+	local output = {}
+
+	local function append_to_buf(data)
+		if not data or not buf then
+			return
+		end
+		vim.schedule(function()
+			-- Si es el mensaje de espera, bórralo
+			local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+			if #current == 1 and current[1]:find("Generando") then
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
+			end
+
+			for line in data:gmatch("[^\r\n]+") do
+				table.insert(output, line)
+				vim.api.nvim_buf_set_lines(buf, -1, -1, false, { line })
+			end
+		end)
+	end
 
 	local handle
 	handle = vim.loop.spawn("gemini", {
@@ -32,28 +45,38 @@ function run_gemini(prompt, callback)
 		stdout:close()
 		stderr:close()
 		handle:close()
+
+		-- Si no hay salida, mostrar mensaje de error
+		vim.schedule(function()
+			if #output == 0 then
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "❌ No se recibió salida de Gemini." })
+			end
+		end)
 	end)
 
-	read_all(stdout, function(output)
-		vim.notify("Respuesta generada", vim.log.levels.INFO, {
-			replace = notify_id,
-			title = "nvim-gemini",
-		})
-		callback(output)
+	-- Leer stdout en tiempo real
+	stdout:read_start(function(err, data)
+		if err then
+			vim.schedule(function()
+				vim.api.nvim_err_writeln("Error leyendo Gemini: " .. err)
+			end)
+			return
+		end
+		append_to_buf(data)
 	end)
 end
 
---- Prompt directo
-function M.ask_prompt()
+--- Prompt directo del usuario (modo normal)
+function M.ask_prompt_streamed()
 	vim.ui.input({ prompt = "Pregunta a Gemini: " }, function(input)
 		if input and input ~= "" then
-			run_gemini(input, M.show_output)
+			run_gemini_streamed(input)
 		end
 	end)
 end
 
---- Prompt desde selección visual
-function M.ask_from_visual()
+--- Usar selección visual como prompt
+function M.ask_visual_streamed()
 	local _, ls, cs = unpack(vim.fn.getpos("'<"))
 	local _, le, ce = unpack(vim.fn.getpos("'>"))
 	local lines = vim.fn.getline(ls, le)
@@ -61,25 +84,11 @@ function M.ask_from_visual()
 	if #lines == 0 then
 		return
 	end
-
 	lines[#lines] = string.sub(lines[#lines], 1, ce)
 	lines[1] = string.sub(lines[1], cs)
+
 	local prompt = table.concat(lines, "\n")
-
-	run_gemini(prompt, M.show_output)
-end
-
---- Mostrar salida en nuevo split
-function M.show_output(output)
-	vim.schedule(function()
-		vim.cmd("vnew")
-		local buf = vim.api.nvim_get_current_buf()
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(output or "", "\n"))
-
-		vim.bo[buf].buftype = "nofile"
-		vim.bo[buf].bufhidden = "wipe"
-		vim.bo[buf].swapfile = false
-	end)
+	run_gemini_streamed(prompt)
 end
 
 return M
