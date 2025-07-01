@@ -6,14 +6,19 @@ local function run_gemini_streamed(prompt)
 	local stdout = vim.loop.new_pipe(false)
 	local stderr = vim.loop.new_pipe(false)
 
-	-- Crear split y buffer temporal
 	vim.schedule(function()
 		vim.cmd("vnew")
 		buf = vim.api.nvim_get_current_buf()
 
+		-- Establecer nombre visible en la ventana
+		vim.api.nvim_buf_set_name(buf, "gemini")
+
+		-- Configurar como buffer temporal, no modificable
 		vim.bo[buf].buftype = "nofile"
 		vim.bo[buf].bufhidden = "wipe"
 		vim.bo[buf].swapfile = false
+		vim.bo[buf].modifiable = false
+
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "⌛ Generando respuesta..." })
 	end)
 
@@ -24,7 +29,10 @@ local function run_gemini_streamed(prompt)
 			return
 		end
 		vim.schedule(function()
-			-- Si es el mensaje de espera, bórralo
+			-- Hacer temporalmente modificable para escribir
+			vim.bo[buf].modifiable = true
+
+			-- Limpiar mensaje inicial si es necesario
 			local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 			if #current == 1 and current[1]:find("Generando") then
 				vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
@@ -34,6 +42,9 @@ local function run_gemini_streamed(prompt)
 				table.insert(output, line)
 				vim.api.nvim_buf_set_lines(buf, -1, -1, false, { line })
 			end
+
+			-- Volver a bloquear edición
+			vim.bo[buf].modifiable = false
 		end)
 	end
 
@@ -46,15 +57,15 @@ local function run_gemini_streamed(prompt)
 		stderr:close()
 		handle:close()
 
-		-- Si no hay salida, mostrar mensaje de error
 		vim.schedule(function()
 			if #output == 0 then
+				vim.bo[buf].modifiable = true
 				vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "❌ No se recibió salida de Gemini." })
+				vim.bo[buf].modifiable = false
 			end
 		end)
 	end)
 
-	-- Leer stdout en tiempo real
 	stdout:read_start(function(err, data)
 		if err then
 			vim.schedule(function()
@@ -66,7 +77,6 @@ local function run_gemini_streamed(prompt)
 	end)
 end
 
---- Prompt directo del usuario (modo normal)
 function M.ask_prompt_streamed()
 	vim.ui.input({ prompt = "Pregunta a Gemini: " }, function(input)
 		if input and input ~= "" then
@@ -75,7 +85,6 @@ function M.ask_prompt_streamed()
 	end)
 end
 
---- Usar selección visual como prompt
 function M.ask_visual_streamed()
 	local _, ls, cs = unpack(vim.fn.getpos("'<"))
 	local _, le, ce = unpack(vim.fn.getpos("'>"))
