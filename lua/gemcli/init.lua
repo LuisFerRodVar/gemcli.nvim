@@ -1,6 +1,17 @@
 local M = {}
+M.model = "gemini-2.5-pro" -- Modelo predeterminado
 M.buf = nil
 M.win = nil
+local already_warned = false
+
+function M.toggle_model()
+	if M.model == "gemini-2.5-pro" then
+		M.model = "gemini-2.5-flash"
+	else
+		M.model = "gemini-2.5-pro"
+	end
+	vim.notify("🔁 Modelo cambiado a: " .. M.model, vim.log.levels.INFO)
+end
 
 -- Crear y mostrar el buffer flotante
 local function open_floating_buffer()
@@ -137,7 +148,11 @@ local function run_gemini_streamed(prompt)
 				else
 					vim.notify("⚠️ Error desde Gemini: " .. data, vim.log.levels.WARN)
 				end
+				M.hide()
 			end)
+			if handle and handle:is_active() then
+				handle:kill("sigterm") -- O "sigint"
+			end
 		end
 	end)
 end
