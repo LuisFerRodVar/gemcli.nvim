@@ -1,6 +1,4 @@
 local M = {}
-local spinner_frames = { "󰑓", "󰑙", "󰑛", "󰑝", "󰑟", "󰑡", "󰑣" }
-
 M.buf = nil
 M.win = nil
 
@@ -123,14 +121,24 @@ local function run_gemini_streamed(prompt)
 		end)
 	end)
 
-	stdout:read_start(function(err, data)
+	stderr:read_start(function(err, data)
 		if err then
 			vim.schedule(function()
-				vim.api.nvim_err_writeln("Error leyendo Gemini: " .. err)
+				vim.api.nvim_err_writeln("Error leyendo stderr de Gemini: " .. err)
 			end)
 			return
 		end
-		append_to_buf(data)
+
+		if data and data ~= "" then
+			vim.schedule(function()
+				-- Detectar error de cuota u otros errores
+				if data:match("Quota exceeded") then
+					vim.notify("⚠️ Límite diario de Gemini alcanzado.", vim.log.levels.WARN)
+				else
+					vim.notify("⚠️ Error desde Gemini: " .. data, vim.log.levels.WARN)
+				end
+			end)
+		end
 	end)
 end
 
