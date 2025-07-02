@@ -15,6 +15,12 @@ end
 
 -- Crear y mostrar el buffer flotante
 local function open_floating_buffer()
+	-- Cerrar ventana anterior si existe
+	if M.win and vim.api.nvim_win_is_valid(M.win) then
+		vim.api.nvim_win_close(M.win, true)
+	end
+
+	-- Crear nuevo buffer si es inválido
 	if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
 		M.buf = vim.api.nvim_create_buf(false, true)
 	end
@@ -39,7 +45,6 @@ local function open_floating_buffer()
 	vim.bo[M.buf].buftype = "nofile"
 	vim.bo[M.buf].bufhidden = "hide"
 	vim.bo[M.buf].swapfile = false
-	vim.bo[M.buf].modifiable = true
 	vim.bo[M.buf].filetype = "markdown"
 
 	vim.wo[M.win].number = false
@@ -54,6 +59,9 @@ local function open_floating_buffer()
 		"<cmd>lua require'gemcli'.hide()<CR>",
 		{ noremap = true, silent = true }
 	)
+
+	-- Mensaje visible de prueba
+	vim.api.nvim_buf_set_lines(M.buf, 0, -1, false, { "# Esperando respuesta de Gemini..." })
 
 	return M.buf, M.win
 end
