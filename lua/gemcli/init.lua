@@ -145,14 +145,18 @@ local function run_gemini_streamed(prompt)
 				-- Detectar error de cuota u otros errores
 				if data:match("Quota exceeded") then
 					vim.notify("⚠️ Límite diario de Gemini alcanzado.", vim.log.levels.WARN)
+					M.hide()
+					if handle and handle:is_active() then
+						handle:kill("sigterm") -- O "sigint"
+					end
 				else
 					vim.notify("⚠️ Error desde Gemini: " .. data, vim.log.levels.WARN)
+					M.hide()
+					if handle and handle:is_active() then
+						handle:kill("sigterm") -- O "sigint"
+					end
 				end
-				M.hide()
 			end)
-			if handle and handle:is_active() then
-				handle:kill("sigterm") -- O "sigint"
-			end
 		end
 	end)
 end
