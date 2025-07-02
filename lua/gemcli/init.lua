@@ -158,11 +158,7 @@ local function run_gemini_streamed(prompt)
 						handle:kill("sigterm") -- O "sigint"
 					end
 				else
-					vim.notify("⚠️ Error desde Gemini: " .. data, vim.log.levels.WARN)
-					M.hide()
-					if handle and handle:is_active() then
-						handle:kill("sigterm") -- O "sigint"
-					end
+					append_to_buf(data)
 				end
 			end)
 		end
