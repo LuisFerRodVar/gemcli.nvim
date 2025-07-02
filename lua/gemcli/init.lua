@@ -149,6 +149,7 @@ local function run_gemini_streamed(prompt)
 		end
 
 		if data and data ~= "" then
+			append_to_buf(data)
 			vim.schedule(function()
 				-- Detectar error de cuota u otros errores
 				if data:match("Quota exceeded") then
@@ -157,8 +158,6 @@ local function run_gemini_streamed(prompt)
 					if handle and handle:is_active() then
 						handle:kill("sigterm") -- O "sigint"
 					end
-				else
-					append_to_buf(data)
 				end
 			end)
 		end
