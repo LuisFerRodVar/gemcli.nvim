@@ -115,7 +115,7 @@ local function run_gemini_streamed(prompt)
 	end
 
 	local handle = vim.loop.spawn("gemini", {
-		args = { "-p", prompt },
+		args = { "-p", prompt, "-m", M.model },
 		stdio = { nil, stdout, stderr },
 	}, function()
 		stdout:close()
